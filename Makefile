@@ -320,12 +320,12 @@ download-default-certs:
 .SILENT: demo
 demo:
 	$(MAKE) download-default-certs ENVIROMENT=demo
-	$(MAKE) docker-compose.yml ENVIROMENT=demo
+	$(MAKE) -B docker-compose.yml ENVIROMENT=demo
 	$(MAKE) pull ENVIROMENT=demo
 	mkdir -p $(CURDIR)/codebase
 	docker-compose up -d
 	docker-compose exec -T drupal with-contenv bash -lc 'composer update'
-	$(MAKE) install
+	$(MAKE) install ENVIRONMENT=demo
 	$(MAKE) update-settings-php ENVIROMENT=demo
 #	$(MAKE) drupal-public-files-import SRC=$(CURDIR)/demo-data/public-files.tgz ENVIROMENT=demo
 #	$(MAKE) drupal-database ENVIROMENT=demo
@@ -342,11 +342,11 @@ demo:
 .SILENT: local
 local:
 	$(MAKE) download-default-certs ENVIROMENT=local
-	$(MAKE) docker-compose.yml ENVIRONMENT=local
+	$(MAKE) -B docker-compose.yml ENVIRONMENT=local
 	$(MAKE) pull ENVIRONMENT=local
 	mkdir -p $(CURDIR)/codebase
 	if [ -z "$$(ls -A $(CURDIR)/codebase)" ]; then \
-		docker container run --rm -v $(CURDIR)/codebase:/home/root islandora/nginx:$(TAG) with-contenv bash -lc 'composer create-project drupal/recommended-project:^9.1 /tmp/codebase; mv /tmp/codebase/* /home/root; cd /home/root; composer config minimum-stability dev; composer require islandora/islandora:dev-8.x-1.x; composer require drush/drush:^10.3'; \
+		docker container run --rm -v $(CURDIR)/codebase:/home/root islandora/nginx:$(TAG) with-contenv bash -lc 'composer create-project islandora/islandora-sandbox:dev-install-profile /tmp/codebase; mv /tmp/codebase/* /home/root; cd /home/root'; \
 	fi
 	docker-compose up -d
 	docker-compose exec -T drupal with-contenv bash -lc 'composer install; chown -R nginx:nginx .'
