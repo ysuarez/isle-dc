@@ -72,7 +72,7 @@ endif
 DATABASE_SERVICES := $(sort $(DATABASE_SERVICES))
 
 # The services to be run (order is important), as services can override one
-# another. Traefik must be last if included as otherwise its network 
+# another. Traefik must be last if included as otherwise its network
 # definition for `gateway` will be overriden.
 SERVICES := $(REQUIRED_SERIVCES) $(FCREPO_SERVICE) $(WATCHTOWER_SERVICE) $(ETCD_SERVICE) $(DATABASE_SERVICES) $(ENVIRONMENT) $(TRAEFIK_SERVICE) $(SECRETS) $(CODE_SERVER_SERVICE)
 
@@ -173,14 +173,14 @@ hydrate: update-settings-php update-config-from-environment solr-cores namespace
 delete-shortcut-entities:
 	docker-compose exec -T drupal drush -l $(SITE) entity:delete shortcut_set
 
-# Forces the site uuid to match that in the config_sync_directory so that 
+# Forces the site uuid to match that in the config_sync_directory so that
 # configuration can be imported.
 .PHONY: set-site-uuid
 .SILENT: set-site-uuid
 set-site-uuid:
 	docker-compose exec -T drupal with-contenv bash -lc "set_site_uuid"
 
-# RemovesForces the site uuid to match that in the config_sync_directory so that 
+# RemovesForces the site uuid to match that in the config_sync_directory so that
 # configuration can be imported.
 .PHONY: remove_standard_profile_references_from_config
 .SILENT: remove_standard_profile_references_from_config
@@ -224,7 +224,7 @@ endif
 	docker cp $$(docker-compose ps -q drupal):/tmp/public-files.tgz $(DEST)
 
 drupal-public-files-import: $(SRC)
-ifndef SRC 
+ifndef SRC
 	$(error SRC is not set)
 endif
 	docker cp $(SRC) $$(docker-compose ps -q drupal):/tmp/public-files.tgz
@@ -337,7 +337,7 @@ demo:
 #	$(MAKE) reindex-fcrepo-metadata ENVIROMENT=demo
 #	$(MAKE) reindex-solr ENVIROMENT=demo
 #	$(MAKE) reindex-triplestore ENVIROMENT=demo
-	
+
 
 .PHONY: local
 .SILENT: local
@@ -347,7 +347,8 @@ local:
 	$(MAKE) pull ENVIRONMENT=local
 	mkdir -p $(CURDIR)/codebase
 	if [ -z "$$(ls -A $(CURDIR)/codebase)" ]; then \
-		docker container run --rm -v $(CURDIR)/codebase:/home/root $(REPOSITORY)/nginx:$(TAG) with-contenv bash -lc 'git clone -b islandora-profile-in-packagist https://github.com/islandora-devops/islandora-project /tmp/codebase; mv /tmp/codebase/* /home/root; cd /home/root; composer require islandora/islandora_profile:1.x-dev'; \
+		docker container run --rm -v $(CURDIR)/codebase:/home/root $(REPOSITORY)/nginx:$(TAG) with-contenv bash -lc \
+			'git clone -b islandora-profile-in-packagist https://github.com/islandora-devops/islandora-project /tmp/codebase; mv /tmp/codebase/* /home/root; cd /home/root; composer require islandora/islandora_profile:loose-drupal-dev -W; composer require islandora/islandora_install_profile_demo:drupal-9-patch-dev -W'; \
 	fi
 	docker-compose up -d
 	docker-compose exec -T drupal with-contenv bash -lc 'composer install; chown -R nginx:nginx .'
