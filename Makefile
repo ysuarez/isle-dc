@@ -277,33 +277,17 @@ reindex-triplestore:
 	docker-compose exec -T drupal with-contenv bash -lc 'drush --root /var/www/drupal/web -l $${DRUPAL_DEFAULT_SITE_URL} vbo-exec content emit_node_event --configuration="queue=islandora-indexing-triplestore-index&event=Update"'
 	docker-compose exec -T drupal with-contenv bash -lc 'drush --root /var/www/drupal/web -l $${DRUPAL_DEFAULT_SITE_URL} vbo-exec media emit_media_event --configuration="queue=islandora-indexing-triplestore-index&event=Update"'
 
-# Helper function to generate keys for the user to use in their docker-compose.env.yml
-.PHONY: generate-jwt-keys
-.SILENT: generate-jwt-keys
-generate-jwt-keys:
-	docker run --rm -ti \
+# Helper to generate secrets & passwords, like so:
+# make generate-secrets
+.PHONY: generate-secrets
+.SILENT: generate-secrets
+generate-secrets:
+	docker run --rm -t \
+		-v $(CURDIR)/secrets:/secrets \
+		-v $(CURDIR)/scripts/generate-secrets.sh:/generate-secrets.sh \
+		-w / \
 		--entrypoint bash \
-		$(REPOSITORY)/drupal:$(TAG) -c \
-		"openssl genrsa -out /tmp/private.key 2048 &> /dev/null; \
-		openssl rsa -pubout -in /tmp/private.key -out /tmp/public.key &> /dev/null; \
-		echo $$'\nPrivate Key:\n'; \
-		cat /tmp/private.key; \
-		echo $$'\nPublic Key:\n'; \
-		cat /tmp/public.key; \
-		echo $$'\nCopy and paste these keys into your docker-compose.env.yml file where appropriate.'"
-
-# Helper to generate Matomo password, like so:
-# make generate-matomo-password MATOMO_USER_PASS=my_new_password
-.PHONY: generate-matomo-password
-.SILENT: generate-matomo-password
-generate-matomo-password:
-ifndef MATOMO_USER_PASS
-	$(error MATOMO_USER_PASS is not set)
-endif
-	docker run --rm -ti \
-		--entrypoint php \
-		$(REPOSITORY)/drupal:$(TAG) -r \
-		'echo password_hash(md5("$(MATOMO_USER_PASS)"), PASSWORD_DEFAULT) . "\n";'
+		$(REPOSITORY)/drupal:$(TAG) -c /generate-secrets.sh
 
 # Helper function to generate keys for the user to use in their docker-compose.env.yml
 .PHONY: download-default-certs
@@ -319,7 +303,7 @@ download-default-certs:
 
 .PHONY: demo
 .SILENT: demo
-demo:
+demo: generate-secrets
 	$(MAKE) download-default-certs ENVIROMENT=demo
 	$(MAKE) -B docker-compose.yml ENVIROMENT=demo
 	$(MAKE) pull ENVIROMENT=demo
@@ -341,7 +325,7 @@ demo:
 
 .PHONY: local
 .SILENT: local
-local:
+local: generate-secrets
 	$(MAKE) download-default-certs ENVIROMENT=local
 	$(MAKE) -B docker-compose.yml ENVIRONMENT=local
 	$(MAKE) pull ENVIRONMENT=local
@@ -366,8 +350,21 @@ clean:
 	echo "**DANGER** About to rm your SERVER data subdirs, your docker volumes and your codebase/web"
 	$(MAKE) confirm
 	-docker-compose down -v
-	sudo rm -fr codebase certs
+	sudo rm -fr codebase certs secrets/live/*
 	git clean -xffd .
+
+.PHONY: up
+.SILENT: up
+up:
+	test -f docker-compose.yml && docker-compose up -d --remove-orphans || $(MAKE) demo
+	@echo "\n Sleeping for 10 seconds to wait for Drupal to finish building.\n"
+	sleep 10
+	docker-compose exec -T drupal with-contenv bash -lc "for_all_sites update_settings_php"
+
+.PHONY: down
+.SILENT: down
+down:
+	-docker-compose down --remove-orphans
 
 .phony: confirm
 confirm:
