@@ -287,7 +287,7 @@ generate-secrets:
 		-v $(CURDIR)/scripts/generate-secrets.sh:/generate-secrets.sh \
 		-w / \
 		--entrypoint bash \
-		$(REPOSITORY)/drupal:$(TAG) -c /generate-secrets.sh
+		$(REPOSITORY)/drupal:$(TAG) -c "/generate-secrets.sh && chown -R `id -u`:`id -g` /secrets"
 
 # Helper function to generate keys for the user to use in their docker-compose.env.yml
 .PHONY: download-default-certs
@@ -322,7 +322,6 @@ demo: generate-secrets
 #	$(MAKE) reindex-solr ENVIROMENT=demo
 #	$(MAKE) reindex-triplestore ENVIROMENT=demo
 
-
 .PHONY: local
 .SILENT: local
 local: generate-secrets
@@ -341,7 +340,13 @@ local: generate-secrets
 	$(MAKE) set-files-owner SRC=$(CURDIR)/codebase ENVIROMENT=local
 	# The - at the beginning is not a typo, it will allow this process to failing the make command.
 	-docker-compose exec -T drupal with-contenv bash -lc 'mkdir -p /var/www/drupal/config/sync && chmod -R 775 /var/www/drupal/config/sync'
-	sudo chown -R `id -u`:101 codebase
+	docker-compose exec -T drupal with-contenv bash -lc 'chown -R `id -u`:101 /var/www/drupal'
+	$(MAKE) initial_content login
+
+.SILENT: initial_content
+initial_content:
+	curl -u admin:$(shell cat secrets/live/DRUPAL_DEFAULT_ACCOUNT_PASSWORD) -H "Content-Type: application/json" -d "@demo-data/homepage.json" https://${DOMAIN}/node?_format=json
+	curl -u admin:$(shell cat secrets/live/DRUPAL_DEFAULT_ACCOUNT_PASSWORD) -H "Content-Type: application/json" -d "@demo-data/browse-collections.json" https://${DOMAIN}/node?_format=json
 
 # Destroys everything beware!
 .PHONY: clean
@@ -365,6 +370,10 @@ up:
 .SILENT: down
 down:
 	-docker-compose down --remove-orphans
+
+.PHONY: login
+login:
+	docker-compose exec -T drupal with-contenv bash -lc "drush uli --uri=$(DOMAIN)"
 
 .phony: confirm
 confirm:
