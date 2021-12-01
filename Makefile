@@ -83,6 +83,7 @@ docker-compose.yml: $(SERVICES:%=docker-compose.%.yml) .env
 	docker-compose $(SERVICES:%=-f docker-compose.%.yml) config > docker-compose.yml
 
 .PHONY: pull
+## Fetches the latest images from the registry.
 pull: docker-compose.yml
 ifeq ($(REPOSITORY), local)
 	# Only need to pull external services if using local images.
@@ -92,8 +93,8 @@ else
 endif
 
 .PHONY: build
+## Create Dockerfile from example if it does not exist.
 build:
-	# Create Dockerfile from example if it does not exist.
 	if [ ! -f $(PROJECT_DRUPAL_DOCKERFILE) ]; then \
 		cp $(CURDIR)/sample.Dockerfile $(PROJECT_DRUPAL_DOCKERFILE); \
 	fi
@@ -160,9 +161,9 @@ solr-cores:
 namespaces:
 	docker-compose exec -T drupal with-contenv bash -lc "for_all_sites create_blazegraph_namespace_with_default_properties"
 
-# Reconstitute the site from environment variables.
 .PHONY: hydrate
 .SILENT: hydrate
+## Reconstitute the site from environment variables.
 hydrate: update-settings-php update-config-from-environment solr-cores namespaces run-islandora-migrations
 	docker-compose exec -T drupal drush cr -y
 
@@ -187,16 +188,16 @@ set-site-uuid:
 remove_standard_profile_references_from_config:
 	docker-compose exec -T drupal with-contenv bash -lc "remove_standard_profile_references_from_config"
 
-# Exports the sites configuration.
 .PHONY: config-export
 .SILENT: config-export
+## Exports the sites configuration.
 config-export:
 	docker-compose exec -T drupal drush -l $(SITE) config:export -y
 
-# Import the sites configuration.
-# N.B You may need to run this multiple times in succession due to errors in the configurations dependencies.
+
 .PHONY: config-import
 .SILENT: config-import
+## Import the sites configuration. N.B You may need to run this multiple times in succession due to errors in the configurations dependencies.
 config-import: set-site-uuid delete-shortcut-entities
 	docker-compose exec -T drupal drush -l $(SITE) config:import -y
 
@@ -389,8 +390,9 @@ initial_content:
 	curl -u admin:$(shell cat secrets/live/DRUPAL_DEFAULT_ACCOUNT_PASSWORD) -H "Content-Type: application/json" -d "@demo-data/homepage.json" https://${DOMAIN}/node?_format=json
 	curl -u admin:$(shell cat secrets/live/DRUPAL_DEFAULT_ACCOUNT_PASSWORD) -H "Content-Type: application/json" -d "@demo-data/browse-collections.json" https://${DOMAIN}/node?_format=json
 
-# Destroys everything beware!
 .PHONY: clean
+.SILENT: clean
+## Destroys everything beware!
 clean:
 	echo "**DANGER** About to rm your SERVER data subdirs, your docker volumes and your codebase/web"
 	$(MAKE) confirm
@@ -400,6 +402,7 @@ clean:
 
 .PHONY: up
 .SILENT: up
+## Brings up the containers or builds demo if no containers were found.
 up:
 	test -f docker-compose.yml && docker-compose up -d --remove-orphans || $(MAKE) demo
 	@echo "\n Sleeping for 10 seconds to wait for Drupal to finish building.\n"
@@ -411,6 +414,7 @@ up:
 down:
 	-docker-compose down --remove-orphans
 
+
 .PHONY: login
 .SILENT: login
 login:
@@ -421,3 +425,39 @@ login:
 .phony: confirm
 confirm:
 	@echo -n "Are you sure you want to continue and drop your data? [y/N] " && read ans && [ $${ans:-N} = y ]
+
+GREEN  := $(shell tput -Txterm setaf 2)
+YELLOW := $(shell tput -Txterm setaf 3)
+WHITE  := $(shell tput -Txterm setaf 7)
+RESET  := $(shell tput -Txterm sgr0)
+TARGET_MAX_CHAR_NUM=20
+
+.PHONY: help
+.SILENT: help
+help:
+	@echo ''
+	@echo 'Usage:'
+	@echo '  ${YELLOW}make${RESET} ${GREEN}<target>${RESET}'
+	@echo ''
+	@echo 'Targets:'
+	# @grep '^.PHONY: .* #' Makefile | sed 's/\.PHONY: \(.*\) # \(.*\)/\1 \2/'
+	@awk '/^[a-zA-Z\-\_0-9]+:/ { \
+		helpMessage = match(lastLine, /^## (.*)/); \
+		if (helpMessage) { \
+			helpCommand = $$1; sub(/:$$/, "", helpCommand); \
+			helpMessage = substr(lastLine, RSTART + 3, RLENGTH); \
+			printf "  ${YELLOW}%-$(TARGET_MAX_CHAR_NUM)s${RESET} ${GREEN}%s${RESET}\n", helpCommand, helpMessage; \
+		} \
+	} \
+	{lastLine = $$0}' $(MAKEFILE_LIST)
+
+LATEST_VERSION := $(shell curl -s https://api.github.com/repos/desandro/masonry/releases/latest | grep '\"tag_name\":' | sed -E 's/.*\"([^\"]+)\".*/\1/')
+
+.PHONY: fix-masonry
+.SILENT: fix-masonry
+## Fix missing masonry library.
+fix-masonry:
+	@echo "Latest version of masonry library is ${LATEST_VERSION}"
+	docker-compose exec drupal bash -lc "[ -d '/var/www/drupal/web/libraries' ] && exit ; mkdir -p /var/www/drupal/web/libraries ; chmod 755 /var/www/drupal/web/libraries ; chown 1000:nginx /var/www/drupal/web/libraries"
+	docker-compose exec drupal bash -lc "cd /var/www/drupal/web/libraries/ ; [ ! -d '/var/www/drupal/web/libraries/masonry' ] && git clone --quiet --branch ${LATEST_VERSION} https://github.com/desandro/masonry.git || echo Ready"
+	docker-compose exec drupal bash -lc "cd /var/www/drupal/web/libraries/ ; [ -d '/var/www/drupal/web/libraries/masonry' ] && chmod -R 755 /var/www/drupal/web/libraries/masonry ; chown -R 1000:nginx /var/www/drupal/web/libraries/masonry"
