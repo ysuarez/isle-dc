@@ -319,6 +319,7 @@ demo: generate-secrets
 	$(MAKE) reindex-fcrepo-metadata ENVIROMENT=demo
 	$(MAKE) reindex-solr ENVIROMENT=demo
 	$(MAKE) reindex-triplestore ENVIROMENT=demo
+	$(MAKE) fix-masonry
 
 .PHONY: local
 .SILENT: local
@@ -329,14 +330,19 @@ local: generate-secrets
 	$(MAKE) pull ENVIRONMENT=local
 	mkdir -p $(CURDIR)/codebase
 	if [ -z "$$(ls -A $(CURDIR)/codebase)" ]; then \
-		docker container run --rm -v $(CURDIR)/codebase:/home/root $(REPOSITORY)/nginx:$(TAG) with-contenv bash -lc 'composer create-project drupal/recommended-project:^9.1 /tmp/codebase; mv /tmp/codebase/* /home/root; cd /home/root; composer config minimum-stability dev; composer require islandora/islandora:dev-8.x-1.x; composer require drush/drush:^10.3'; \
+		docker container run --rm -v $(CURDIR)/codebase:/home/root $(REPOSITORY)/nginx:$(TAG) with-contenv bash -lc 'composer create-project drupal/recommended-project:^9.1 /tmp/codebase; mv /tmp/codebase/* /home/root; cd /home/root; composer config minimum-stability dev; composer require "drupal/flysystem:^2.0@beta" -W; composer require islandora/islandora:dev-8.x-1.x; composer require drush/drush:^10.3'; \
 	fi
 	docker-compose up -d
+	docker-compose exec -T drupal with-contenv bash -lc "composer require drupal/console:~1.0 --prefer-dist --optimize-autoloader -W"
 	docker-compose exec -T drupal with-contenv bash -lc 'composer install; chown -R nginx:nginx .'
 	$(MAKE) remove_standard_profile_references_from_config ENVIROMENT=local
 	$(MAKE) install ENVIRONMENT=local
 	$(MAKE) hydrate ENVIRONMENT=local
 	$(MAKE) set-files-owner SRC=$(CURDIR)/codebase ENVIROMENT=local
+	docker-compose exec -T drupal with-contenv bash -lc 'mkdir -p /var/www/drupal/config/sync; chown -R nginx: /var/www/drupal/config/sync; drush config:export'
+	$(MAKE) fix-masonry
+	docker cp scripts/patch_views.sh $$(docker ps --format "{{.Names}}" | grep drupal):/var/www/drupal/patch_views.sh
+	docker-compose exec -T drupal with-contenv bash -lc "bash /var/www/drupal/patch_views.sh ; rm /var/www/drupal/patch_views.sh ; drush cr"
 
 .PHONY: clean
 .SILENT: clean
